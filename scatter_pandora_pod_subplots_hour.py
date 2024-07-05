@@ -220,11 +220,11 @@ for n in range(len(pollutants)):
     plt.show()
     
     #save to a different folder so we don't confuse the script on the next iteration
-    Spath = 'C:\\Users\\kokorn\\Documents\\Modeling Surface Concentrations\\Plain Scatterplots\\'
+    Spath = 'C:\\Users\\kokorn\\Documents\\Modeling Surface Concentrations\\Scatterplots - Hourly\\'
     #Create the full path with the figure name
     if IQR == 'yes':
-        savePath = os.path.join(Spath,'PandoraIQR_ground_scatter_{}_subplots'.format(pollutants[n]))
+        savePath = os.path.join(Spath,'PandoraIQR_ground_scatter_{}_subplots_hour'.format(pollutants[n]))
     else:
-        savePath = os.path.join(Spath,'Pandora_ground_scatter_{}_subplots'.format(pollutants[n]))
+        savePath = os.path.join(Spath,'Pandora_ground_scatter_{}_subplots_hour'.format(pollutants[n]))
     #Save the figure to a filepath
     fig.savefig(savePath)

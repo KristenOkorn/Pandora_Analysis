@@ -27,22 +27,26 @@ for n in range(len(pollutants)):
     
     if pollutants[n] == 'O3':
         #get the relevant location data for each
-        locations = ['Bayonne','Bristol','CapeElizabeth','Cornwall','EastProvidence','Londonderry','Lynn','MadisonCT','NewBrunswick','NewHaven','OldField','Philadelphia','Pittsburgh','Queens','WashingtonDC','Westport','AFRC','TMF','Ames','Richmond','CSUS','BAO','NREL','Platteville','NOAA','SLC','AldineTX','LibertyTX','HoustonTX']
-        pods = ['EPA_Bayonne','EPA_Bristol','EPA_CapeElizabeth','EPA_Cornwall','EPA_EastProvidence','EPA_Londonderry','EPA_Lynn','EPA_MadisonCT','EPA_NewBrunswick','EPA_NewHaven','EPA_OldField','EPA_Philadelphia','EPA_Pittsburgh','EPA_Queens','EPA_WashingtonDC','EPA_Westport','YPODR9','YPODA2','YPODL6','YPODL1','YPODL2','YPODD4','YPODF1','YPODF9','topaz','WBB','HoustonAldine','LibertySamHoustonLibrary','UHMoodyTower']
-        
+        locations = ['Bayonne','Bristol','CapeElizabeth','Cornwall','EastProvidence','Londonderry','Lynn','MadisonCT','NewBrunswick','NewHaven','OldField','Philadelphia','Pittsburgh','Queens','WashingtonDC','Westport','AFRC','TMF','Ames','Richmond','CSUS','SLC','BAO','NREL','Platteville','AldineTX','LibertyTX','HoustonTX']
+        pods = ['EPA_Bayonne','EPA_Bristol','EPA_CapeElizabeth','EPA_Cornwall','EPA_EastProvidence','EPA_Londonderry','EPA_Lynn','EPA_MadisonCT','EPA_NewBrunswick','EPA_NewHaven','EPA_OldField','EPA_Philadelphia','EPA_Pittsburgh','EPA_Queens','EPA_WashingtonDC','EPA_Westport','YPODR9','YPODA2','YPODL6','YPODL1','YPODL2','WBB','BAO_ground','NREL_ground','Platteville_ground','HoustonAldine','LibertySamHoustonLibrary','UHMoodyTower']
+        colors = plt.get_cmap('tab20').colors + plt.get_cmap('tab10').colors[:8]
+
     elif pollutants[n] == 'NO2':
         #get the relevant location data for each
         locations = ['NewHaven','Westport','WashingtonDC','Lynn','Londonderry','Bayonne','NewBrunswick','OldField','Queens','Philadelphia','Pittsburgh','EastProvidence','Hawthorne','Hampton','SWDetroit','AldineTX']
         pods = ['EPA_NewHaven','EPA_Westport','EPA_WashingtonDC','EPA_Lynn','EPA_Londonderry','EPA_Bayonne','EPA_NewBrunswick','EPA_OldField','EPA_Queens','EPA_Philadelphia','EPA_Pittsburgh','EPA_EastProvidence','EPA_Hawthorne','EPA_Hampton','EPA_Detroit','EPA_Aldine']
-        
+        colors = plt.get_cmap('tab20').colors[:len(locations)]
+
     elif pollutants[n] == 'SO2':
         #get the relevant location data for each
         locations = ['NewHaven','WashingtonDC','Londonderry','Bayonne','Bronx','Queens','Philadelphia','Pittsburgh','EastProvidence','Hawthorne','SWDetroit']
         pods = ['EPA_NewHaven','EPA_WashingtonDC','EPA_Londonderry','EPA_Bayonne','EPA_Bronx','EPA_Queens','EPA_Philadelphia','EPA_Pittsburgh','EPA_EastProvidence','EPA_Hawthorne','EPA_Detroit']
+        colors = plt.get_cmap('tab20').colors[:len(locations)]
         
     elif pollutants[n] == 'HCHO': #CA pods only
         locations = ['Ames','CSUS','Richmond','Whittier','TMF','AFRC']
         pods = ['YPODL6','YPODL2','YPODL1','YPODA7','YPODA2','YPODR9']
+        colors = plt.get_cmap('tab10').colors[:len(locations)]
         
     #Create subplots
     fig, axs = plt.subplots(nrows=math.ceil(len(locations)/4), ncols=4, figsize=(15, 5 * math.ceil(len(locations)/4)))  # Adjust figsize as needed
@@ -140,6 +144,13 @@ for n in range(len(pollutants)):
         
         elif 'EPA' in pods[k]: #EPA data
             pod.index = pd.to_datetime(pod.index)
+            
+        elif 'ground' in pods[k]: #FRAPPE ref data
+            pod.index = pd.to_datetime(pod.index)
+            #remove whitespace from column headings
+            pod.columns = pod.columns.str.strip()
+            #remove rows containing -999
+            pod = pod[pod['{}'.format(pollutants[n])] != -999]
         
         #resample to hourly
         pod = pod.resample('H').mean()

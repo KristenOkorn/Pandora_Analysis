@@ -169,6 +169,7 @@ for n in range(len(pollutants)):
         ground = ground.dropna()
         #resample to hourly
         ground = ground.resample('H').mean()
+        ann_inputs = ann_inputs.resample('H').mean()
             
         #combine our datasets - both already in local time
         x=pd.merge(ann_inputs,ground,left_index=True,right_index=True)

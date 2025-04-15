@@ -22,7 +22,7 @@ from sklearn.ensemble import BaggingRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.model_selection import GridSearchCV
-from joblib import dump, load
+from joblib import dump
 from sklearn.preprocessing import StandardScaler
 import concurrent.futures
 import multiprocessing
@@ -39,11 +39,11 @@ for n in range(len(pollutants)):
 
     if pollutants[n] == 'O3':
         #list of pods to model
-        #locations = ['Bayonne','Bristol','CapeElizabeth','Cornwall','EastProvidence','Londonderry','Lynn','MadisonCT','NewBrunswick','NewHaven','OldField','Philadelphia','Pittsburgh','Queens','WashingtonDC','Westport','SLC','AldineTX','LibertyTX','HoustonTX']
-        #pods = ['EPA_Bayonne','EPA_Bristol','EPA_CapeElizabeth','EPA_Cornwall','EPA_EastProvidence','EPA_Londonderry','EPA_Lynn','EPA_MadisonCT','EPA_NewBrunswick','EPA_NewHaven','EPA_OldField','EPA_Philadelphia','EPA_Pittsburgh','EPA_Queens','EPA_WashingtonDC','EPA_Westport','WBB','HoustonAldine','LibertySamHoustonLibrary','UHMoodyTower']
+        locations = ['Bayonne','Bristol','CapeElizabeth','Cornwall','EastProvidence','Londonderry','Lynn','MadisonCT','NewBrunswick','NewHaven','OldField','Philadelphia','Pittsburgh','Queens','WashingtonDC','Westport','SLC','AldineTX','LibertyTX','HoustonTX']
+        pods = ['EPA_Bayonne','EPA_Bristol','EPA_CapeElizabeth','EPA_Cornwall','EPA_EastProvidence','EPA_Londonderry','EPA_Lynn','EPA_MadisonCT','EPA_NewBrunswick','EPA_NewHaven','EPA_OldField','EPA_Philadelphia','EPA_Pittsburgh','EPA_Queens','EPA_WashingtonDC','EPA_Westport','WBB','HoustonAldine','LibertySamHoustonLibrary','UHMoodyTower']
         #smaller subset for troubleshooting
-        locations = ['Bayonne','Bristol']
-        pods = ['EPA_Bayonne','EPA_Bristol']
+        #locations = ['Bayonne','Bristol']
+        #pods = ['EPA_Bayonne','EPA_Bristol']
         
         #create a directory path for us to pull from / save to
         path = 'C:\\Users\\okorn\\Documents\\Pandora Surface\\All O3 Data Combined'
@@ -192,6 +192,9 @@ for n in range(len(pollutants)):
         ground = ground.dropna()
         #resample to hourly 
         ground = ground.resample('H').mean()
+        ann_inputs = ann_inputs.resample('H').mean()
+        
+        #same for Pandora
         
         #combine our datasets - both already in local time
         x=pd.merge(ann_inputs,ground,left_index=True,right_index=True)
@@ -207,112 +210,117 @@ for n in range(len(pollutants)):
         #Now do our test-train split
         X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=.2)
         
-        #scale our dataset
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_test_scaled = scaler.transform(X_test)
-        
-        #Create a Random Forest regressor object
-        rf_regressor = RandomForestRegressor()
-        
-        #Define a parameter grid to search over
-        param_grid = {
-            'n_estimators': [50, 100],
-            'max_depth': [6,7,8,9,10], #Hiro recommended
-            'min_samples_split': [2, 5, 10],
-            'min_samples_leaf': [1, 2, 4],
-            'max_features': [1.0, 'sqrt', 'log2'],
-            }
-        
-        if bagging == 'no':
-            #initialize the GridSearchCV object
-            grid_search = GridSearchCV(rf_regressor, param_grid, cv=5, scoring='neg_mean_squared_error')
+        if len(X_train) < 100:
+            print(f" [{location}/{pod}] merged x has only {len(x)} rows — skipping.")
+            return None, None, None
 
-        elif bagging == 'yes':
-            #Create a Bagging Regressor with the base Random Forest Regressor
-            bagging_rf_model = BaggingRegressor(rf_regressor, random_state=42)
-            #Create a pipeline with a scaler and the bagging regressor
-            pipeline = Pipeline([
-                ('scaler', StandardScaler()),
-                ('bagging', bagging_rf_model)
-                ])
+        else:
+            #scale our dataset
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
+            X_test_scaled = scaler.transform(X_test)
             
-            #Update the parameter grid for the pipeline
-            param_grid_pipeline = {
-                'bagging__base_estimator__n_estimators': [50, 100],
-                'bagging__base_estimator__max_depth': [None, 10, 20],
-                'bagging__base_estimator__min_samples_split': [2, 5, 10],
-                'bagging__base_estimator__min_samples_leaf': [1, 2, 4],
-                'bagging__base_estimator__max_features': [1.0, 'sqrt', 'log2'],
-                'bagging__n_estimators': [10, 20],  # Number of base estimators in the ensemble
-                'bagging__bootstrap_features': [True, False],
+            #Create a Random Forest regressor object
+            rf_regressor = RandomForestRegressor()
+            
+            #Define a parameter grid to search over
+            param_grid = {
+                'n_estimators': [50, 100],
+                'max_depth': [6,7,8,9,10], #Hiro recommended
+                'min_samples_split': [2, 5, 10],
+                'min_samples_leaf': [1, 2, 4],
+                'max_features': [1.0, 'sqrt', 'log2'],
                 }
-            #Create the GridSearchCV object with BaggingRegressor
-            grid_search = GridSearchCV(pipeline, param_grid_pipeline, cv=5, scoring='neg_mean_squared_error')
-        
-        #---------------------------------------------------
-        #Fit the model to the data
-        grid_search.fit(X_train_scaled, y_train['Y_hatfield'].values)
+            
+            if bagging == 'no':
+                #initialize the GridSearchCV object
+                grid_search = GridSearchCV(rf_regressor, param_grid, cv=5, scoring='neg_mean_squared_error')
     
-        #let us know we've finished fitting the data
-        print(f"{pollutants[n]} data from {location}: Model fitted")
-        
-        #get the best parameters found
-        best_params = grid_search.best_params_
-        #convert the dictionary to a pandas DataFrame
-        best_params = pd.DataFrame.from_dict(best_params,orient='index')
-        
-        #get the best model
-        best_rf_model = grid_search.best_estimator_
+            elif bagging == 'yes':
+                #Create a Bagging Regressor with the base Random Forest Regressor
+                bagging_rf_model = BaggingRegressor(rf_regressor, random_state=42)
+                #Create a pipeline with a scaler and the bagging regressor
+                pipeline = Pipeline([
+                    ('scaler', StandardScaler()),
+                    ('bagging', bagging_rf_model)
+                    ])
+                
+                #Update the parameter grid for the pipeline
+                param_grid_pipeline = {
+                    'bagging__base_estimator__n_estimators': [50, 100],
+                    'bagging__base_estimator__max_depth': [None, 10, 20],
+                    'bagging__base_estimator__min_samples_split': [2, 5, 10],
+                    'bagging__base_estimator__min_samples_leaf': [1, 2, 4],
+                    'bagging__base_estimator__max_features': [1.0, 'sqrt', 'log2'],
+                    'bagging__n_estimators': [10, 20],  # Number of base estimators in the ensemble
+                    'bagging__bootstrap_features': [True, False],
+                    }
+                #Create the GridSearchCV object with BaggingRegressor
+                grid_search = GridSearchCV(pipeline, param_grid_pipeline, cv=5, scoring='neg_mean_squared_error')
             
-        #make predictions
-        y_hat_train = best_rf_model.predict(X_train_scaled)
-        y_hat_test = best_rf_model.predict(X_test_scaled)
+            #---------------------------------------------------
+            #Fit the model to the data
+            grid_search.fit(X_train_scaled, y_train['Y_hatfield'].values)
         
-        #now add the predictions  & y's back to the original dataframes
-        X_train['y_hat_train'] = y_hat_train
-        X_test['y_hat_test'] = y_hat_test
-        X_train['Y'] = y_train
-        X_test['Y'] = y_test
-        
-        if bagging == 'no':
-            #Get the feature importances
-            importances = best_rf_model.feature_importances_
-            #Create a dictionary of importance labels with their corresponding input labels
-            importance_dict = {label: importance for label, importance in zip(x.columns, importances)}
-            #convert to dataframe
-            importance_labels = pd.DataFrame(list(importance_dict.items()), columns=['feature', 'importance'])
-            #save out separately for each location
-            savePath = os.path.join(subfolder_path,'{}_importancelabels_{}.csv'.format(location,pollutants[n]))
-            importance_labels.to_csv(savePath,index=False)
-        #---------------------------------------------------
-                    
-        #generate statistics for test data
-        r2 = r2_score(y_test['Y_hatfield'], y_hat_test)
-        rmse = np.sqrt(mean_squared_error(y_test['Y_hatfield'], y_hat_test))
-        mbe = np.mean(y_hat_test - y_test['Y_hatfield'])
-        #store our results in a dictionary
-        stats_test = {'AppLoc': location,'R2': r2, 'RMSE': rmse, 'MBE': mbe}
-        #append these to the main list
-        stats_test_list.append(stats_test)
-        
-        #generate statistics for train data
-        r2 = r2_score(y_train['Y_hatfield'], y_hat_train)
-        rmse = np.sqrt(mean_squared_error(y_train['Y_hatfield'], y_hat_train))
-        mbe = np.mean(y_hat_train - y_train['Y_hatfield'])
-        #store our results in a dictionary
-        stats_train = {'AppLoc': location,'R2': r2, 'RMSE': rmse, 'MBE': mbe}
-        #append these to the main list
-        stats_train_list.append(stats_train)
-        
-        #--------------------------------------------------- 
-        #save the best rf model
-        savePath = os.path.join(subfolder_path,'{}_rfmodel_{}.joblib'.format(location,pollutants[n]))
-        dump(best_rf_model, savePath)
+            #let us know we've finished fitting the data
+            print(f"{pollutants[n]} data from {location}: Model fitted")
             
-        #end function definition
-        #return f"Completed {pollutants[n]} processing for: {location} / {pod}"
-        return best_params, stats_test, stats_train
+            #get the best parameters found
+            best_params = grid_search.best_params_
+            #convert the dictionary to a pandas DataFrame
+            best_params = pd.DataFrame.from_dict(best_params,orient='index')
+            
+            #get the best model
+            best_rf_model = grid_search.best_estimator_
+                
+            #make predictions
+            y_hat_train = best_rf_model.predict(X_train_scaled)
+            y_hat_test = best_rf_model.predict(X_test_scaled)
+            
+            #now add the predictions  & y's back to the original dataframes
+            X_train['y_hat_train'] = y_hat_train
+            X_test['y_hat_test'] = y_hat_test
+            X_train['Y'] = y_train
+            X_test['Y'] = y_test
+            
+            if bagging == 'no':
+                #Get the feature importances
+                importances = best_rf_model.feature_importances_
+                #Create a dictionary of importance labels with their corresponding input labels
+                importance_dict = {label: importance for label, importance in zip(x.columns, importances)}
+                #convert to dataframe
+                importance_labels = pd.DataFrame(list(importance_dict.items()), columns=['feature', 'importance'])
+                #save out separately for each location
+                savePath = os.path.join(subfolder_path,'{}_importancelabels_{}.csv'.format(location,pollutants[n]))
+                importance_labels.to_csv(savePath,index=False)
+            #---------------------------------------------------
+                        
+            #generate statistics for test data
+            r2 = r2_score(y_test['Y_hatfield'], y_hat_test)
+            rmse = np.sqrt(mean_squared_error(y_test['Y_hatfield'], y_hat_test))
+            mbe = np.mean(y_hat_test - y_test['Y_hatfield'])
+            #store our results in a dictionary
+            stats_test = {'AppLoc': location,'R2': r2, 'RMSE': rmse, 'MBE': mbe}
+            #append these to the main list
+            stats_test_list.append(stats_test)
+            
+            #generate statistics for train data
+            r2 = r2_score(y_train['Y_hatfield'], y_hat_train)
+            rmse = np.sqrt(mean_squared_error(y_train['Y_hatfield'], y_hat_train))
+            mbe = np.mean(y_hat_train - y_train['Y_hatfield'])
+            #store our results in a dictionary
+            stats_train = {'AppLoc': location,'R2': r2, 'RMSE': rmse, 'MBE': mbe}
+            #append these to the main list
+            stats_train_list.append(stats_train)
+            
+            #--------------------------------------------------- 
+            #save the best rf model
+            savePath = os.path.join(subfolder_path,'{}_rfmodel_{}.joblib'.format(location,pollutants[n]))
+            dump(best_rf_model, savePath)
+                
+            #end function definition
+            #return f"Completed {pollutants[n]} processing for: {location} / {pod}"
+            return best_params, stats_test, stats_train
     #---------------------------------------------------
     #Function to process each pair of location and pod
     def process_location_pod(location_pod):

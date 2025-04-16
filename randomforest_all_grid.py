@@ -21,7 +21,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.ensemble import BaggingRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from joblib import dump
 from sklearn.preprocessing import StandardScaler
 import concurrent.futures
@@ -234,7 +234,9 @@ for n in range(len(pollutants)):
             
             if bagging == 'no':
                 #initialize the GridSearchCV object
-                grid_search = GridSearchCV(rf_regressor, param_grid, cv=5, scoring='neg_mean_squared_error')
+                #grid_search = GridSearchCV(rf_regressor, param_grid, cv=5, n_jobs=-1,scoring='neg_mean_squared_error')
+                #use randomized search instead for speed
+                grid_search = RandomizedSearchCV(rf_regressor, param_distributions=param_grid, n_iter=20, cv=5, n_jobs=-1, scoring='neg_mean_squared_error', random_state=42)
     
             elif bagging == 'yes':
                 #Create a Bagging Regressor with the base Random Forest Regressor
@@ -256,8 +258,9 @@ for n in range(len(pollutants)):
                     'bagging__bootstrap_features': [True, False],
                     }
                 #Create the GridSearchCV object with BaggingRegressor
-                grid_search = GridSearchCV(pipeline, param_grid_pipeline, cv=5, scoring='neg_mean_squared_error')
-            
+                #grid_search = GridSearchCV(pipeline, param_grid_pipeline, cv=5, n_jobs=-1,scoring='neg_mean_squared_error')
+                #use randomized search instead for speed
+                grid_search = RandomizedSearchCV(estimator=pipeline, param_distributions=param_grid_pipeline, n_iter=20, cv=5, n_jobs=-1, scoring='neg_mean_squared_error', random_state=42)
             #---------------------------------------------------
             #Fit the model to the data
             grid_search.fit(X_train_scaled, y_train['Y_hatfield'].values)
@@ -267,9 +270,13 @@ for n in range(len(pollutants)):
             
             #get the best parameters found
             best_params = grid_search.best_params_
-            #convert the dictionary to a pandas DataFrame
-            best_params = pd.DataFrame.from_dict(best_params,orient='index')
-            
+            #Add location info
+            best_params['Location'] = f"{location}"
+            #convert to dataframe
+            best_params = pd.DataFrame([best_params])
+            #convert the dictionary to a pandas DataFrame & transpose
+            #best_params = pd.DataFrame.from_dict(best_params,orient='index').T
+        
             #get the best model
             best_rf_model = grid_search.best_estimator_
                 
@@ -361,34 +368,34 @@ for n in range(len(pollutants)):
             print(result)
         
         #---------------------------------------------------
-        #save out the final data
-        to_save = ['best_params','stats_test','stats_train']
-        dataframes = [best_params_list, stats_test_list, stats_train_list]  # List of actual DataFrame objects
-            
-        dataframes = []
-        for i, data in enumerate([best_params_list, stats_test_list, stats_train_list]):
-            print(f"\nInspecting {to_save[i]} data:")
-            for j, entry in enumerate(data):
-                print(f"  Entry {j} type: {type(entry)} shape: ", end="")
-                if hasattr(entry, "shape"):
-                    print(entry.shape)
-                else:
-                    print("N/A")
+        #Define the data you want to save
+        final_saves = {
+           'best_params': best_params_list,
+           'stats_test': stats_test_list,
+           'stats_train': stats_train_list}
+
+        # Save out all results
+        for key, data in final_saves.items():
+            print(f"\nProcessing '{key}' — {len(data)} entries")
 
             try:
-                if to_save[i] == "best_params":
-                    # best_params_list is a list of DataFrames → concat them
-                    df = pd.concat(data, axis=0).reset_index(drop=True)
-                elif all(isinstance(v, dict) for v in data):
-                    df = pd.DataFrame(data)
-                else:
-                    df = pd.DataFrame(data, columns=['Value'])  # fallback
-                    dataframes.append(df)
-            except Exception as e:
-                print(f"❌ Failed to convert {to_save[i]} to DataFrame: {e}")
-                dataframes.append(pd.DataFrame())  # fallback empty
+                # Determine how to process based on type
+                if all(isinstance(d, pd.DataFrame) for d in data):
+                    # Combine row-wise
+                    df_combined = pd.concat(data, ignore_index=True)
 
-        #Save all data to file
-        for i, df in enumerate(dataframes):
-            savePath = os.path.join(subfolder_path, '{}_{}.csv'.format(to_save[i], pollutants[n]))
-            df.to_csv(savePath, index=False)
+                elif all(isinstance(d, dict) for d in data):
+                    # Turn list of dicts into DataFrame
+                    df_combined = pd.DataFrame(data)
+
+                else:
+                    print(f"Skipping '{key}' — unexpected entry types.")
+                    continue
+
+                # Save to CSV
+                save_path = os.path.join(subfolder_path, f"{key}_{pollutants[n]}.csv")
+                df_combined.to_csv(save_path, index=False)
+                print(f"Saved '{key}' to {save_path}")
+
+            except Exception as e:
+                print(f"Error processing '{key}': {e}")

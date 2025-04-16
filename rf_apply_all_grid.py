@@ -27,11 +27,11 @@ for n in range(len(pollutants)):
     
     if pollutants[n] == 'O3':
         #list of pods to model
-        #locations = ['Bayonne','Bristol','CapeElizabeth','Cornwall','EastProvidence','Londonderry','Lynn','MadisonCT','NewBrunswick','NewHaven','OldField','Philadelphia','Pittsburgh','Queens','WashingtonDC','Westport','AFRC','TMF','Ames','Richmond','CSUS','SLC','BAO','NREL','Platteville','AldineTX','LibertyTX','HoustonTX']
-        #pods = ['EPA_Bayonne','EPA_Bristol','EPA_CapeElizabeth','EPA_Cornwall','EPA_EastProvidence','EPA_Londonderry','EPA_Lynn','EPA_MadisonCT','EPA_NewBrunswick','EPA_NewHaven','EPA_OldField','EPA_Philadelphia','EPA_Pittsburgh','EPA_Queens','EPA_WashingtonDC','EPA_Westport','YPODR9','YPODA2','YPODL6','YPODL1','YPODL2','WBB','BAO_ground','NREL_ground','Platteville_ground','HoustonAldine','LibertySamHoustonLibrary','UHMoodyTower']
+        locations = ['Bayonne','Bristol','CapeElizabeth','Cornwall','EastProvidence','Londonderry','Lynn','MadisonCT','NewBrunswick','NewHaven','OldField','Philadelphia','Pittsburgh','Queens','WashingtonDC','Westport','SLC','AldineTX','LibertyTX','HoustonTX']
+        pods = ['EPA_Bayonne','EPA_Bristol','EPA_CapeElizabeth','EPA_Cornwall','EPA_EastProvidence','EPA_Londonderry','EPA_Lynn','EPA_MadisonCT','EPA_NewBrunswick','EPA_NewHaven','EPA_OldField','EPA_Philadelphia','EPA_Pittsburgh','EPA_Queens','EPA_WashingtonDC','EPA_Westport','WBB','HoustonAldine','LibertySamHoustonLibrary','UHMoodyTower']
         #smaller subset for troubleshooting
-        locations = ['Bayonne','Bristol']
-        pods = ['EPA_Bayonne','EPA_Bristol']
+        #locations = ['Bayonne','Bristol']
+        #pods = ['EPA_Bayonne','EPA_Bristol']
         #removed 'LibertyTX' / 'LibertySamHoustonLibrary' for no bag
         
         #create a directory path for us to pull from / save to
@@ -212,15 +212,8 @@ for n in range(len(pollutants)):
             #append these to the main list
             stats_list.append(stats)
         
-        #save our results to file
-        savePath = os.path.join(mpath,'{}_stats_application_{}.csv'.format(location,pollutants[n]))
-        #Convert the list to a DataFrame
-        stats_list = pd.DataFrame(stats_list)
-        stats_list.to_csv(savePath)
-        
         #end function definition
-        return f"Completed {pollutants[n]} model application for: {location} / {pod}"
-
+        return stats_list
     #---------------------------------------------------
     #Function to process each pair of location and pod
     def process_location_pod(location_pod):
@@ -237,8 +230,23 @@ for n in range(len(pollutants)):
          #Use ProcessPoolExecutor to parallelize
          with concurrent.futures.ProcessPoolExecutor() as executor:
              #Map the function to the list of location_pod_pairs to run in parallel
-             results = list(executor.map(process_location_pod, location_pod_pairs))
+             stats_list = list(executor.map(process_location_pod, location_pod_pairs))
          #---------------------------------------------------
-         #Print results
-         for result in results:
-             print(result)
+         #Save results
+         try:
+             if all(isinstance(d, pd.DataFrame) for d in stats_list):
+                 df_combined = pd.concat(stats_list, ignore_index=True)
+             elif all(isinstance(d, dict) for d in stats_list):
+                df_combined = pd.DataFrame(stats_list)
+             else:
+                print("Skipping stats — unexpected entry types.")
+                df_combined = None
+
+             if df_combined is not None:
+                save_path = os.path.join(mpath, f"best_params_{pollutants[n]}.csv")
+                df_combined.to_csv(save_path, index=False)
+                print(f"Saved best_params to {save_path}")
+
+         except Exception as e:
+            print(f"Error processing best_params: {e}")
+         

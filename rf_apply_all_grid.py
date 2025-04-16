@@ -188,10 +188,11 @@ for n in range(len(pollutants)):
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(x)
         
-        #create a list to store the stats for each model for this location
+        #-------------------------------------
+        #-------------------------------------
+        #blank slate for each location
         stats_list = []
-        #-------------------------------------
-        #-------------------------------------
+        
         #now load the model in using a loop
         for k in locations:
             modelName = '{}_rfmodel_{}.joblib'.format(k,pollutants[n])
@@ -209,7 +210,7 @@ for n in range(len(pollutants)):
             mbe = np.mean(y_hat - y['Y_hatfield'])
             #store our results in a dictionary
             stats = {'AppLoc': '{}'.format(k), 'R2': r2, 'RMSE': rmse, 'MBE': mbe}
-            #append these to the main list
+            #append
             stats_list.append(stats)
         
         #end function definition
@@ -218,7 +219,8 @@ for n in range(len(pollutants)):
     #Function to process each pair of location and pod
     def process_location_pod(location_pod):
          location, pod = location_pod
-         return load_n_apply(n, pollutants, bagging, location, locations, pod, path)
+         stats_list = load_n_apply(n, pollutants, bagging, location, locations, pod, path)
+         return location, stats_list
 
     #Add these lines for multiprocessing on Windows
     if __name__ == '__main__':
@@ -227,26 +229,26 @@ for n in range(len(pollutants)):
          #Pair locations and pods
          location_pod_pairs = zip(locations, pods)
 
-         #Use ProcessPoolExecutor to parallelize
+         #Run parallel processing
          with concurrent.futures.ProcessPoolExecutor() as executor:
-             #Map the function to the list of location_pod_pairs to run in parallel
-             stats_list = list(executor.map(process_location_pod, location_pod_pairs))
-         #---------------------------------------------------
-         #Save results
-         try:
-             if all(isinstance(d, pd.DataFrame) for d in stats_list):
-                 df_combined = pd.concat(stats_list, ignore_index=True)
-             elif all(isinstance(d, dict) for d in stats_list):
-                df_combined = pd.DataFrame(stats_list)
-             else:
-                print("Skipping stats — unexpected entry types.")
-                df_combined = None
+             results = list(executor.map(process_location_pod, location_pod_pairs))
+#---------------------------------------------------
+         # Save stats per location
+         for location, stats_list in results:
+             try:
+                # Convert to DataFrame
+                if all(isinstance(d, dict) for d in stats_list):
+                     df_combined = pd.DataFrame(stats_list)
+                elif all(isinstance(d, pd.DataFrame) for d in stats_list):
+                    df_combined = pd.concat(stats_list, ignore_index=True)
+                else:
+                    print(f"Skipping {location} — unexpected entry types.")
+                    continue
 
-             if df_combined is not None:
-                save_path = os.path.join(mpath, f"best_params_{pollutants[n]}.csv")
+                #Save CSV
+                save_path = os.path.join(mpath, f"{location}_stats_app_{pollutants[n]}.csv")
                 df_combined.to_csv(save_path, index=False)
-                print(f"Saved best_params to {save_path}")
+                print(f"Saved stats for {location} to {save_path}")
 
-         except Exception as e:
-            print(f"Error processing best_params: {e}")
-         
+             except Exception as e:
+                print(f"Error saving stats for {location}: {e}")
